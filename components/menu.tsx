@@ -186,7 +186,7 @@ export function Menu({ isOpen, onClose, menuData }: MenuProps) {
 									custom={direction}
 									initial='initial'
 									animate={direction === 'forward' ? 'enterForward' : 'enterBack'}
-									exit={direction === 'forward' ? 'exitBack' : 'exitForward'}
+									exit={direction === 'forward' ? 'exitForward' : 'exitBack'}
 									variants={slideVariants}
 									className='overflow-hidden'
 								>
