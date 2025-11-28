@@ -1,8 +1,8 @@
-		'use client';
+'use client';
 
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import useMeasure from 'react-use-measure';
 import * as VaulDrawer from 'vaul';
 
@@ -24,7 +24,10 @@ export interface MenuProps {
 
 type Direction = 1 | -1;
 
-// Animation variants
+// Animation constants
+const ANIMATION_DURATION = 0.3;
+const ANIMATION_EASING = [0.4, 0.0, 0.2, 1] as const;
+
 const slideVariants = {
 	initial: (direction: Direction) => ({
 		x: `${110 * direction}%`,
@@ -40,43 +43,53 @@ const slideVariants = {
 	}),
 };
 
-const ANIMATION_DURATION = 0.3;
-const ANIMATION_EASING = [0.4, 0.0, 0.2, 1] as const;
+// Helper function to find menu by path
+const findMenuByPath = (rootMenu: MenuItem[], path: string[]): MenuItem[] => {
+	if (path.length === 0) return rootMenu;
+
+	let current: MenuItem[] = rootMenu;
+	for (const id of path) {
+		const found = current.find((item) => item.id === id);
+		if (!found?.submenu) return rootMenu;
+		current = found.submenu;
+	}
+	return current;
+};
 
 export function Menu({ isOpen, onClose, menuData }: MenuProps) {
-	const [menuHistory, setMenuHistory] = useState<MenuItem[][]>([menuData]);
+	const [menuPath, setMenuPath] = useState<string[]>([]);
 	const [direction, setDirection] = useState<Direction>(1);
 	const [elementRef, bounds] = useMeasure();
 	const menuRef = useRef<HTMLDivElement>(null);
 
-	const currentMenu = menuHistory[menuHistory.length - 1];
-	const isRootLevel = menuHistory.length === 1;
+	const currentMenu = useMemo(() => findMenuByPath(menuData, menuPath), [menuData, menuPath]);
+	const isRootLevel = menuPath.length === 0;
 
 	// Reset menu to root when opened
 	useEffect(() => {
 		if (isOpen) {
-			setMenuHistory([menuData]);
+			setMenuPath([]);
 			setDirection(1);
 		}
-	}, [isOpen, menuData]);
+	}, [isOpen]);
 
 	// Navigation handlers
-	const navigateToSubmenu = useCallback((submenu: MenuItem[]) => {
+	const navigateToSubmenu = useCallback((itemId: string) => {
 		setDirection(1);
-		setMenuHistory((prev) => [...prev, submenu]);
+		setMenuPath((prev) => [...prev, itemId]);
 	}, []);
 
 	const navigateBack = useCallback(() => {
-		if (menuHistory.length > 1) {
+		if (menuPath.length > 0) {
 			setDirection(-1);
-			setMenuHistory((prev) => prev.slice(0, -1));
+			setMenuPath((prev) => prev.slice(0, -1));
 		}
-	}, [menuHistory.length]);
+	}, [menuPath.length]);
 
 	const handleMenuItemClick = useCallback(
 		(item: MenuItem) => {
 			if (item.submenu?.length) {
-				navigateToSubmenu(item.submenu);
+				navigateToSubmenu(item.id);
 				return;
 			}
 
@@ -107,44 +120,11 @@ export function Menu({ isOpen, onClose, menuData }: MenuProps) {
 		[handleClose]
 	);
 
-	const handleItemKeyDown = useCallback(
-		(e: React.KeyboardEvent<HTMLButtonElement>, item: MenuItem, index: number) => {
-			const menuItems = menuRef.current?.querySelectorAll('[role="menuitem"]');
-			if (!menuItems) return;
-
-			const focusItem = (targetIndex: number) => {
-				(menuItems[targetIndex] as HTMLElement)?.focus();
-			};
-
-			switch (e.key) {
-				case 'ArrowDown':
-					e.preventDefault();
-					focusItem(Math.min(index + 1, menuItems.length - 1));
-					break;
-				case 'ArrowUp':
-					e.preventDefault();
-					focusItem(Math.max(index - 1, 0));
-					break;
-				case 'Home':
-					e.preventDefault();
-					focusItem(0);
-					break;
-				case 'End':
-					e.preventDefault();
-					focusItem(menuItems.length - 1);
-					break;
-				case 'Enter':
-				case ' ':
-					e.preventDefault();
-					handleMenuItemClick(item);
-					break;
-			}
-		},
-		[handleMenuItemClick]
-	);
-
 	return (
-		<VaulDrawer.Root open={isOpen} onOpenChange={onClose}>
+		<VaulDrawer.Root
+			open={isOpen}
+			onOpenChange={onClose}
+		>
 			<VaulDrawer.Portal>
 				<VaulDrawer.Overlay
 					className='fixed inset-0 z-10 bg-black/30'
@@ -152,7 +132,7 @@ export function Menu({ isOpen, onClose, menuData }: MenuProps) {
 				/>
 				<VaulDrawer.Content
 					asChild
-					className='fixed inset-x-4 bottom-4 z-10 mx-auto max-w-[400px] overflow-hidden rounded-[24px] bg-white outline-none shadow-2xl md:mx-auto md:w-full'
+					className='fixed inset-x-4 bottom-4 z-10 mx-auto max-w-[400px] overflow-hidden rounded-[20px] bg-white shadow-2xl outline-none sm:rounded-[24px] md:w-full'
 					aria-label='Navigation menu'
 				>
 					<motion.div
@@ -163,10 +143,17 @@ export function Menu({ isOpen, onClose, menuData }: MenuProps) {
 						tabIndex={-1}
 						onKeyDown={handleDialogKeyDown}
 					>
-						<div ref={elementRef} className='relative'>
-							<AnimatePresence initial={false} mode='popLayout' custom={direction}>
+						<div
+							ref={elementRef}
+							className='relative'
+						>
+							<AnimatePresence
+								initial={false}
+								mode='popLayout'
+								custom={direction}
+							>
 								<motion.div
-									key={menuHistory.length}
+									key={menuPath.length}
 									custom={direction}
 									initial='initial'
 									animate='active'
@@ -179,25 +166,25 @@ export function Menu({ isOpen, onClose, menuData }: MenuProps) {
 										ref={menuRef}
 										role='menu'
 										aria-label={isRootLevel ? 'Menu' : currentMenu[0]?.label || 'Submenu'}
-										className='p-5'
+										className='p-3 sm:p-4 md:p-5'
 									>
 										{/* Header */}
 										{!isRootLevel && (
-											<div className='mb-4 flex items-center gap-3'>
+											<div className='mb-3 flex items-center gap-2 sm:mb-4 sm:gap-3'>
 												<button
 													type='button'
 													onClick={navigateBack}
-													className='flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 rounded-md p-1 -ml-1'
+													className='-ml-1 flex items-center gap-1.5 rounded-md p-1 text-xs font-medium text-gray-700 outline-none transition-colors hover:text-gray-900 focus-visible:ring-0 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:gap-2 sm:text-sm'
 													aria-label='Go back to previous menu'
 												>
-													<ChevronLeft className='w-5 h-5' />
+													<ChevronLeft className='h-4 w-4 sm:h-5 sm:w-5' />
 													<span>Back</span>
 												</button>
 											</div>
 										)}
 
 										{/* Menu Items */}
-										<div className='space-y-1'>
+										<div className='space-y-0.5 sm:space-y-1'>
 											{currentMenu.map((item, index) => {
 												const hasSubmenu = Boolean(item.submenu?.length);
 												const Icon = item.icon;
@@ -210,32 +197,28 @@ export function Menu({ isOpen, onClose, menuData }: MenuProps) {
 														aria-haspopup={hasSubmenu ? 'menu' : undefined}
 														aria-expanded={hasSubmenu ? false : undefined}
 														onClick={() => handleMenuItemClick(item)}
-														onKeyDown={(e) => handleItemKeyDown(e, item, index)}
-														className='w-full flex items-start gap-3 px-3 py-3 rounded-lg hover:bg-gray-50 transition-colors duration-150 outline-none focus-visible:bg-gray-100 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-inset group'
+														className='group flex w-full items-start gap-2 rounded-lg px-2 py-1.5 outline-none transition-colors duration-150 hover:bg-gray-50 focus-visible:bg-gray-100 focus-visible:ring-0 focus-visible:ring-inset focus-visible:ring-blue-500 sm:gap-3 sm:px-3 sm:py-3'
 													>
-														{/* Icon */}
 														{Icon && (
-															<div className='flex-shrink-0 mt-0.5'>
-																<Icon className='w-5 h-5 text-gray-600 group-hover:text-gray-900 transition-colors' />
+															<div className='mt-0.5 shrink-0'>
+																<Icon className='h-4 w-4 text-gray-600 transition-colors group-hover:text-gray-900 sm:h-5 sm:w-5' />
 															</div>
 														)}
 
-														{/* Content */}
-														<div className='flex-1 text-left min-w-0'>
-															<div className='font-medium text-gray-900 text-sm leading-tight'>
+														<div className='min-w-0 flex-1 text-left'>
+															<div className='text-sm font-normal leading-tight text-black'>
 																{item.label}
 															</div>
 															{item.description && (
-																<div className='text-xs text-gray-500 mt-0.5 leading-relaxed'>
+																<div className='mt-0.5 text-xs leading-relaxed text-gray-500'>
 																	{item.description}
 																</div>
 															)}
 														</div>
 
-														{/* Arrow */}
 														{hasSubmenu && (
-															<div className='flex-shrink-0 mt-0.5'>
-																<ChevronRight className='w-5 h-5 text-gray-400 group-hover:text-gray-600 transition-colors' />
+															<div className='mt-0.5 flex-shrink-0'>
+																<ChevronRight className='h-4 w-4 text-gray-400 transition-colors group-hover:text-gray-600 sm:h-5 sm:w-5' />
 															</div>
 														)}
 													</button>

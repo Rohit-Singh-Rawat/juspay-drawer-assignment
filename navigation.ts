@@ -1810,7 +1810,7 @@ export const navigationMenu: MenuItem[] = [
 							{
 								id: 'support-hours',
 								label: 'Support Hours',
-								description: 'When we\'re available',
+								description: "When we're available",
 								icon: Target,
 							},
 							{
